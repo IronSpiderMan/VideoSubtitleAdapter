@@ -24,12 +24,14 @@ voices_list = get_voices()
 
 
 def convert_video(video_path, srt, voice, output_dir, speed):
+    print(f"开始转换：{video_path}")
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     fname = os.path.basename(video_path)
     fname = fname.replace(".", f"-{md5_encrypt(str(time.time()))}.")
     output_path = os.path.join(output_dir, fname)
     video_adapt_subtitle(video_path, srt.name, voice, output_path, speed)
+    print(f"转换完成：{output_dir}")
     return output_path
 
 

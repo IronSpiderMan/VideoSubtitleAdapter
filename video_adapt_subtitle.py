@@ -7,12 +7,16 @@ from moviepy.editor import *
 import numpy as np
 from moviepy.audio.AudioClip import AudioArrayClip
 from pydub import AudioSegment
+from pydub.silence import split_on_silence
 from utils import tts, md5_encrypt
+from tqdm import tqdm
+from functools import reduce
 
 parser = argparse.ArgumentParser(
     prog='README.md',
     description="根据字幕文件生成语音，生成的语音通常与视频无法对上，该程序可以调整视频速度，使视频与字幕对应起来",
-    epilog='Text at the bottom of help')
+    epilog='Text at the bottom of help'
+)
 
 
 def total_seconds(dt: datetime) -> float:
@@ -33,18 +37,23 @@ def calculate_duration(start: datetime, end: datetime) -> float:
     return total_seconds(end) - total_seconds(start)
 
 
-def delete_silent(audio: AudioClip, chunk_size=1000) -> AudioClip:
+def delete_silent(audio: AudioClip | AudioSegment, chunk_size=1000) -> AudioClip | AudioSegment:
     """
     删除静音片段
     :param audio:
     :param chunk_size:
     :return:
     """
-    none_silent_chunks = []
-    for chunk in audio.iter_chunks(chunksize=chunk_size):
-        if not np.all(chunk == 0):
-            none_silent_chunks.append(AudioArrayClip(chunk, audio.fps))
-    audio = concatenate_audioclips(none_silent_chunks)
+    if isinstance(audio, AudioClip):
+        none_silent_chunks = []
+        for chunk in audio.iter_chunks(chunksize=chunk_size):
+            if not np.all(chunk == 0):
+                none_silent_chunks.append(AudioArrayClip(chunk, audio.fps))
+        audio = concatenate_audioclips(none_silent_chunks)
+    elif isinstance(audio, AudioSegment):
+        chunks = split_on_silence(audio, min_silence_len=350)
+        if chunks:
+            audio = reduce(lambda a, b: a + b, chunks)
     return audio
 
 
@@ -68,6 +77,7 @@ def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str
         lines = srt.read().strip().split("\n")
         # 每四行为一个台词的信息
         subtitles = [lines[i:i + 4] for i in range(0, len(lines), 4)]
+    progress_bar = tqdm(total=len(subtitles))
     for subtitle in subtitles[:20]:
         # 获取当前台词的开始和结束时间
         start, end = list(map(convert_stime_to_datetime, subtitle[1].split(" --> ")))
@@ -75,7 +85,8 @@ def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str
         silent_duration = calculate_duration(preview_end, start)
         # 生成静音视频和截取静音片段
         if silent_duration > 0.002:
-            silent_audio = AudioSegment.silent(duration=silent_duration)
+            silent_audio = AudioSegment.silent(duration=silent_duration) * 1000
+            print("静音：", silent_audio.duration_seconds, "ms")
             silent_video = original_video.subclip(total_seconds(preview_end), total_seconds(start))
             audio_clips.append(silent_audio)
             video_clips.append(silent_video)
@@ -84,12 +95,14 @@ def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str
         # 生成语音
         audio_filename = asyncio.run(tts(subtitle[2].strip(), voice))
         audio_clip = AudioSegment.from_file(audio_filename)
+        audio_clip = delete_silent(audio_clip)
         # 修改视频速度
         video_clip = original_video.subclip(total_seconds(start), total_seconds(end))
         video_rate = audio_clip.duration_seconds / subtitle_duration
         speed_up_clip = video_clip.speedx(1 / video_rate)
         audio_clips.append(audio_clip)
         video_clips.append(speed_up_clip)
+        progress_bar.update(1)
     # 保存音频
     combined = AudioSegment.empty()
     for audio in audio_clips:
