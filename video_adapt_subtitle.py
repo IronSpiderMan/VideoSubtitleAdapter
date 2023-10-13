@@ -66,7 +66,7 @@ def convert_stime_to_datetime(stime: str) -> datetime:
     return datetime(1970, 1, 1, hours, minutes, seconds, milliseconds * 1000)
 
 
-def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str, speed=1.2):
+def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str, speed=1.2, segments=-1):
     audio_clips = []
     video_clips = []
     preview_end = convert_stime_to_datetime("00:00:00,000")  # 上一个片段的end时间
@@ -78,7 +78,8 @@ def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str
         # 每四行为一个台词的信息
         subtitles = [lines[i:i + 4] for i in range(0, len(lines), 4)]
     progress_bar = tqdm(total=len(subtitles))
-    for subtitle in subtitles[:20]:
+    segments = int(len(subtitles) if segments > len(subtitles) or segments == -1 else segments)
+    for subtitle in subtitles[:segments]:
         # 获取当前台词的开始和结束时间
         start, end = list(map(convert_stime_to_datetime, subtitle[1].split(" --> ")))
         # 计算未读台词的时长
@@ -86,7 +87,6 @@ def video_adapt_subtitle(video_path: str, srt_path: str, voice: str, output: str
         # 生成静音视频和截取静音片段
         if silent_duration > 0.002:
             silent_audio = AudioSegment.silent(duration=silent_duration) * 1000
-            print("静音：", silent_audio.duration_seconds, "ms")
             silent_video = original_video.subclip(total_seconds(preview_end), total_seconds(start))
             audio_clips.append(silent_audio)
             video_clips.append(silent_video)

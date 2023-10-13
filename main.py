@@ -23,14 +23,14 @@ def get_voices():
 voices_list = get_voices()
 
 
-def convert_video(video_path, srt, voice, output_dir, speed):
+def convert_video(video_path, srt, voice, output_dir, speed=1.2, segments=-1):
     print(f"开始转换：{video_path}")
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     fname = os.path.basename(video_path)
     fname = fname.replace(".", f"-{md5_encrypt(str(time.time()))}.")
     output_path = os.path.join(output_dir, fname)
-    video_adapt_subtitle(video_path, srt.name, voice, output_path, speed)
+    video_adapt_subtitle(video_path, srt.name, voice, output_path, speed, segments)
     print(f"转换完成：{output_dir}")
     return output_path
 
@@ -59,7 +59,9 @@ with gr.Blocks() as demo:
             # 上传视频
             video_input = gr.Video(source="upload"),
             # 上传字幕文件
-            srt_input = gr.File(file_types=['srt', 'txt'])
+            with gr.Column():
+                srt_input = gr.File(file_types=['srt', 'txt'])
+                segments_input = gr.Number(label="转换多少句台词，默认-1为全部", value=-1, minimum=-1)
             # 选择发音
             with gr.Column():
                 voices_input = gr.Dropdown(choices=voices_list, value=config['default_voice'], label="请选择声音")
@@ -83,7 +85,7 @@ with gr.Blocks() as demo:
     voice_generate.click(generate_voice, inputs=[text_input, voices_input], outputs=audio_output)
     convert_btn.click(
         convert_video,
-        inputs=[video_input[0], srt_input, voices_input, save_input, speed_slider],
+        inputs=[video_input[0], srt_input, voices_input, save_input, speed_slider, segments_input],
         outputs=video_output
     )
     batch_convert_btn.click(batch_convert_video, inputs=[batch_video_input, batch_srt_input], outputs=success_output)
